@@ -53,7 +53,7 @@ function activate(context) {
 						} catch (error) {
 							console.error(error);
 						}
-					}, 1000); // 1 second interval
+					}, 1000*60); // 1 second interval
 					context.subscriptions.push({ dispose: () => clearInterval(interval) });
 				}).catch((error) => {
 					console.error(error);
