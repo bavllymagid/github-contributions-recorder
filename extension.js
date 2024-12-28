@@ -1,6 +1,7 @@
 const simpleGit = require('simple-git');
 const path = require('path');
 const vscode = require('vscode');
+const fs = require('fs');
 
 const config = {
 	username: '',
@@ -129,12 +130,14 @@ async function authenticateWithGitHub() {
 
 async function getOrCreateRepo() {
 	console.log('Checking for logs repository...');
+	console.log(`user name: ${config.username}, repo: ${config.repo}`);
 	try {
 		await octokit.repos.get({
 			owner: config.username,
-			repo: config.repoName
+			repo: config.repo
 		});
 	} catch (error) {
+		console.error(error);
 		if (error.status === 404) {
 			await octokit.repos.createForAuthenticatedUser({
 				name: config.repo,
@@ -153,7 +156,7 @@ async function logCommits(currentFolder){
         // Get the current date for the file name
         const now = new Date();
         const fileName = `${config.logFilePrefix}-${now.toISOString().split('T')[0]}.txt`;
-        const logPath = path.join(workspacePath, fileName);
+        const logPath = path.join(currentFolder, fileName);
 
         // Try to get the last push date from the repository
         let lastPushDate = null;
@@ -161,7 +164,7 @@ async function logCommits(currentFolder){
             try {
                 const { data } = await octokit.repos.listCommits({
                     owner: config.username,
-                    repo: config.repoName,
+                    repo: config.repo,
                     per_page: 1
                 });
                 
@@ -205,12 +208,38 @@ async function logCommits(currentFolder){
         await pushLogsToRepo(fileName, timestampedLogData, latestCommitMessage);
         vscode.window.showInformationMessage(`${log.all.length} new commits logged and pushed.`);
     } catch (error) {
-        vscode.window.showErrorMessage(`Error logging commits: ${(error as Error).message}`);
+        vscode.window.showErrorMessage(`Error logging commits: ${(error).message}`);
+    }
+}
+
+async function pushLogsToRepo(fileName, content, commitMessage){
+    const contentBase64 = Buffer.from(content).toString('base64');
+
+    try {
+        // Try to get existing file
+        const { data } = await octokit.repos.getContent({
+            owner: config.username,
+            repo: config.repo,
+            path: fileName
+        }).catch(() => ({ data: null }));
+
+        await octokit.repos.createOrUpdateFileContents({
+            owner: config.username,
+            repo: config.repo,
+            path: fileName,
+            message: commitMessage,
+            content: contentBase64,
+            ...(data && { sha: (data).sha })
+        });
+    } catch (error) {
+        throw new Error(`Failed to push logs: ${(error).message}`);
     }
 }
 
 // This method is called when your extension is deactivated
-function deactivate() { }
+function deactivate() { 
+	console.log('Deactivated Github Contributions Recorder');
+}
 
 module.exports = {
 	activate,
