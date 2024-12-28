@@ -6,7 +6,7 @@ const fs = require('fs');
 const config = {
 	username: '',
 	repo: 'contributions-recorder-logs',
-	logFilePrefix: 'contributions-log'
+	logFilePrefix: ''
 };
 const activeEditor = vscode.window.activeTextEditor;
 let git = null;
@@ -151,9 +151,38 @@ async function getOrCreateRepo() {
 	}
 }
 
+// Function to get the repository name
+async function getRepoName() {
+    try {
+        const repoInfo = await git.repo();
+        return repoInfo;  // Returns the name of the repo
+    } catch (error) {
+        console.error('Error getting repo name:', error);
+        return 'Unknown Repository';
+    }
+}
+
+// Function to get the current branch name
+async function getCurrentBranch() {
+    try {
+        const branch = await git.revparse(['--abbrev-ref', 'HEAD']);
+        return branch;
+    } catch (error) {
+        console.error('Error getting current branch:', error);
+        return 'Unknown Branch';
+    }
+}
+
 async function logCommits(currentFolder) {
 	try {
+		
+		// Get the repository name
+        const repoName = await getRepoName();
+        // Get the current branch
+        const currentBranch = await getCurrentBranch();
+
 		// Get the current date for the file name
+		config.logFilePrefix = `${repoName}-${currentBranch}-log`;
 		const now = new Date();
 		const fileName = `${config.logFilePrefix}-${now.toISOString().split('T')[0]}.txt`;
 		const logPath = path.join(currentFolder, fileName);
