@@ -79,8 +79,8 @@ async function checkAuth(context) {
 	if (!authToken) {
 		let token = await authenticateWithGitHub();
 		if (token) {
-			await context.globalState.update('githubToken', authToken);
-			console.log('Successfully stored new GitHub token');
+			await context.globalState.update('githubToken', token);
+			console.log(`Successfully stored new GitHub token ${context.globalState.get('githubToken')}`);
 			return token;
 		}
 	}
@@ -252,7 +252,7 @@ async function pushLogsToRepo(fileName, content, commitMessage) {
 			path: fileName,
 			message: commitMessage,
 			content: newContentBase64,
-			...(data && { sha: data.sha }) // If the file exists, use the sha to update it
+			...(data && { sha: data.sha })
 		});
 
 		console.log('Logs pushed successfully!');
