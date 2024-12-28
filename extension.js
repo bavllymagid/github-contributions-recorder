@@ -182,79 +182,83 @@ async function logCommits(currentFolder) {
 			"--since": lastPushDate ? lastPushDate.toISOString() : '1 day'
 		};
 
-		const log = await git.log(logOptions);
-		console.log(log);
-		// If no new commits, show message and return
-		if (log.all.length === 0) {
-			vscode.window.showInformationMessage('No new commits since last push.');
-			return;
-		}
+		git.log(logOptions).then(async (log) => {
+			console.log(log);
+			// If no new commits, show message and return
+			if (log.all.length === 0) {
+				vscode.window.showInformationMessage('No new commits since last push.');
+				return;
+			}
 
-		// Format commit data
-		const logData = log.all
-			.map(commit => `${commit.date} - ${commit.message} (${commit.author_name})`)
-			.join('\n');
+			// Format commit data
+			const logData = log.all
+				.map(commit => `${commit.date} - ${commit.message} (${commit.author_name})`)
+				.join('\n');
 
-		// Add timestamp to the log
-		const timestamp = now.toISOString();
-		const timestampedLogData = `[Log generated at ${timestamp}]\n${logData}\n`;
+			// Add timestamp to the log
+			const timestamp = now.toISOString();
+			const timestampedLogData = `[Log generated at ${timestamp}]\n${logData}\n`;
 
 
-		// Write to local file
-		fs.appendFileSync(logPath, timestampedLogData);
+			// Write to local file
+			fs.writeFileSync(logPath, timestampedLogData);
 
-		// Get the latest commit message for the push
-		const latestCommitMessage = log.latest?.message || 'Update commit logs';
+			// Get the latest commit message for the push
+			const latestCommitMessage = log.latest?.message || 'Update commit logs';
 
-		// Push to GitHub
-		await pushLogsToRepo(fileName, timestampedLogData, latestCommitMessage);
-		vscode.window.showInformationMessage(`${log.all.length} new commits logged and pushed.`);
+			// Push to GitHub
+			await pushLogsToRepo(fileName, timestampedLogData, latestCommitMessage);
+			vscode.window.showInformationMessage(`${log.all.length} new commits logged and pushed.`);
+		}).catch((error) => {
+			throw new Error(`Error logging commits: ${(error).message}`);
+		});
+
 	} catch (error) {
 		vscode.window.showErrorMessage(`Error logging commits: ${(error).message}`);
 	}
 }
 
 async function pushLogsToRepo(fileName, content, commitMessage) {
-    const contentBase64 = Buffer.from(content).toString('base64');
+	const contentBase64 = Buffer.from(content).toString('base64');
 
-    try {
-        // Try to get existing file
-        const { data } = await octokit.repos.getContent({
-            owner: config.username,
-            repo: config.repo,
-            path: fileName
-        }).catch(() => ({ data: null }));
+	try {
+		// Try to get existing file
+		const { data } = await octokit.repos.getContent({
+			owner: config.username,
+			repo: config.repo,
+			path: fileName
+		}).catch(() => ({ data: null }));
 
-        let newContentBase64;
-        
-        if (data) {
-            // If the file exists, get its current content (Base64 encoded)
-            const existingContent = Buffer.from(data.content, 'base64').toString('utf-8');
-            
-            // Append the new content to the existing content
-            const updatedContent = existingContent + '\n' + content;
-            
-            // Encode the updated content to Base64
-            newContentBase64 = Buffer.from(updatedContent).toString('base64');
-        } else {
-            // If file doesn't exist, just use the new content as is
-            newContentBase64 = contentBase64;
-        }
+		let newContentBase64;
 
-        // Create or update the file
-        await octokit.repos.createOrUpdateFileContents({
-            owner: config.username,
-            repo: config.repo,
-            path: fileName,
-            message: commitMessage,
-            content: newContentBase64,
-            ...(data && { sha: data.sha }) // If the file exists, use the sha to update it
-        });
-        
-        console.log('Logs pushed successfully!');
-    } catch (error) {
-        throw new Error(`Failed to push logs: ${(error).message}`);
-    }
+		if (data) {
+			// If the file exists, get its current content (Base64 encoded)
+			const existingContent = Buffer.from(data.content, 'base64').toString('utf-8');
+
+			// Append the new content to the existing content
+			const updatedContent = existingContent + '\n' + content;
+
+			// Encode the updated content to Base64
+			newContentBase64 = Buffer.from(updatedContent).toString('base64');
+		} else {
+			// If file doesn't exist, just use the new content as is
+			newContentBase64 = contentBase64;
+		}
+
+		// Create or update the file
+		await octokit.repos.createOrUpdateFileContents({
+			owner: config.username,
+			repo: config.repo,
+			path: fileName,
+			message: commitMessage,
+			content: newContentBase64,
+			...(data && { sha: data.sha }) // If the file exists, use the sha to update it
+		});
+
+		console.log('Logs pushed successfully!');
+	} catch (error) {
+		throw new Error(`Failed to push logs: ${(error).message}`);
+	}
 }
 
 
