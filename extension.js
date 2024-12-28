@@ -154,8 +154,13 @@ async function getOrCreateRepo() {
 // Function to get the repository name
 async function getRepoName() {
     try {
-        const repoInfo = await git.repo();
-        return repoInfo;  // Returns the name of the repo
+        // Use git to get the current directory's repository name
+        const repoName = await git.revparse(['--show-toplevel']);
+        
+        // The --show-toplevel command returns the root of the repository, so extract the repo name from the folder path
+        const repoNameFromPath = path.basename(repoName);
+
+        return repoNameFromPath;
     } catch (error) {
         console.error('Error getting repo name:', error);
         return 'Unknown Repository';
