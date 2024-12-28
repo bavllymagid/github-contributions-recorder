@@ -215,28 +215,48 @@ async function logCommits(currentFolder) {
 }
 
 async function pushLogsToRepo(fileName, content, commitMessage) {
-	const contentBase64 = Buffer.from(content).toString('base64');
+    const contentBase64 = Buffer.from(content).toString('base64');
 
-	try {
-		// Try to get existing file
-		const { data } = await octokit.repos.getContent({
-			owner: config.username,
-			repo: config.repo,
-			path: fileName
-		}).catch(() => ({ data: null }));
+    try {
+        // Try to get existing file
+        const { data } = await octokit.repos.getContent({
+            owner: config.username,
+            repo: config.repo,
+            path: fileName
+        }).catch(() => ({ data: null }));
 
-		await octokit.repos.createOrUpdateFileContents({
-			owner: config.username,
-			repo: config.repo,
-			path: fileName,
-			message: commitMessage,
-			content: contentBase64,
-			...(data && { sha: (data).sha })
-		});
-	} catch (error) {
-		throw new Error(`Failed to push logs: ${(error).message}`);
-	}
+        let newContentBase64;
+        
+        if (data) {
+            // If the file exists, get its current content (Base64 encoded)
+            const existingContent = Buffer.from(data.content, 'base64').toString('utf-8');
+            
+            // Append the new content to the existing content
+            const updatedContent = existingContent + '\n' + content;
+            
+            // Encode the updated content to Base64
+            newContentBase64 = Buffer.from(updatedContent).toString('base64');
+        } else {
+            // If file doesn't exist, just use the new content as is
+            newContentBase64 = contentBase64;
+        }
+
+        // Create or update the file
+        await octokit.repos.createOrUpdateFileContents({
+            owner: config.username,
+            repo: config.repo,
+            path: fileName,
+            message: commitMessage,
+            content: newContentBase64,
+            ...(data && { sha: data.sha }) // If the file exists, use the sha to update it
+        });
+        
+        console.log('Logs pushed successfully!');
+    } catch (error) {
+        throw new Error(`Failed to push logs: ${(error).message}`);
+    }
 }
+
 
 // This method is called when your extension is deactivated
 function deactivate() {
