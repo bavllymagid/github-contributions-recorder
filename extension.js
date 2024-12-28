@@ -151,93 +151,95 @@ async function getOrCreateRepo() {
 	}
 }
 
-async function logCommits(currentFolder){
-    try {
-        // Get the current date for the file name
-        const now = new Date();
-        const fileName = `${config.logFilePrefix}-${now.toISOString().split('T')[0]}.txt`;
-        const logPath = path.join(currentFolder, fileName);
+async function logCommits(currentFolder) {
+	try {
+		// Get the current date for the file name
+		const now = new Date();
+		const fileName = `${config.logFilePrefix}-${now.toISOString().split('T')[0]}.txt`;
+		const logPath = path.join(currentFolder, fileName);
 
-        // Try to get the last push date from the repository
-        let lastPushDate = null;
-        if (octokit) {
-            try {
-                const { data } = await octokit.repos.listCommits({
-                    owner: config.username,
-                    repo: config.repo,
-                    per_page: 1
-                });
-                
-                if (data.length > 0) {
-                    lastPushDate = new Date(data[0].commit.committer?.date || data[0].commit.author?.date || '');
-                }
-            } catch (error) {
-                // If repo is empty or other error, default to null
-                lastPushDate = null;
-            }
-        }
+		// Try to get the last push date from the repository
+		let lastPushDate = null;
+		if (octokit) {
+			try {
+				const { data } = await octokit.repos.listCommits({
+					owner: config.username,
+					repo: config.repo,
+					per_page: 1
+				});
 
-        // Get commits since last push
-        const logOptions = {
-            "--since": lastPushDate ? lastPushDate.toISOString() : '1 day'
-        };
-        
-        const log = await git.log(logOptions);
+				if (data.length > 0) {
+					lastPushDate = new Date(data[0].commit.committer?.date || data[0].commit.author?.date || '');
+				}
+			} catch (error) {
+				// If repo is empty or other error, default to null
+				lastPushDate = null;
+			}
+		}
 
-        // If no new commits, show message and return
-        if (log.all.length === 0) {
-            vscode.window.showInformationMessage('No new commits since last push.');
-            return;
-        }
+		// Get commits since last push
+		const logOptions = {
+			"--since": lastPushDate ? lastPushDate.toISOString() : '1 day'
+		};
 
-        // Format commit data
-        const logData = log.all
-            .map(commit => `${commit.date} - ${commit.message} (${commit.author_name})`)
-            .join('\n');
+		const log = await git.log(logOptions);
+		console.log(log);
+		// If no new commits, show message and return
+		if (log.all.length === 0) {
+			vscode.window.showInformationMessage('No new commits since last push.');
+			return;
+		}
 
-        // Add timestamp to the log
-        const timestampedLogData = `[Log generated at ${now.toISOString()}]\n${logData}\n`;
+		// Format commit data
+		const logData = log.all
+			.map(commit => `${commit.date} - ${commit.message} (${commit.author_name})`)
+			.join('\n');
 
-        // Write to local file
-        fs.appendFileSync(logPath, timestampedLogData);
+		// Add timestamp to the log
+		const timestamp = now.toISOString();
+		const timestampedLogData = `[Log generated at ${timestamp}]\n${logData}\n`;
 
-        // Get the latest commit message for the push
-        const latestCommitMessage = log.latest?.message || 'Update commit logs';
 
-        // Push to GitHub
-        await pushLogsToRepo(fileName, timestampedLogData, latestCommitMessage);
-        vscode.window.showInformationMessage(`${log.all.length} new commits logged and pushed.`);
-    } catch (error) {
-        vscode.window.showErrorMessage(`Error logging commits: ${(error).message}`);
-    }
+		// Write to local file
+		fs.appendFileSync(logPath, timestampedLogData);
+
+		// Get the latest commit message for the push
+		const latestCommitMessage = log.latest?.message || 'Update commit logs';
+
+		// Push to GitHub
+		await pushLogsToRepo(fileName, timestampedLogData, latestCommitMessage);
+		vscode.window.showInformationMessage(`${log.all.length} new commits logged and pushed.`);
+	} catch (error) {
+		vscode.window.showErrorMessage(`Error logging commits: ${(error).message}`);
+	}
 }
 
-async function pushLogsToRepo(fileName, content, commitMessage){
-    const contentBase64 = Buffer.from(content).toString('base64');
+async function pushLogsToRepo(fileName, content, commitMessage) {
+	const contentBase64 = Buffer.from(content).toString('base64');
 
-    try {
-        // Try to get existing file
-        const { data } = await octokit.repos.getContent({
-            owner: config.username,
-            repo: config.repo,
-            path: fileName
-        }).catch(() => ({ data: null }));
+	try {
+		// Try to get existing file
+		const { data } = await octokit.repos.getContent({
+			owner: config.username,
+			repo: config.repo,
+			path: fileName
+		}).catch(() => ({ data: null }));
 
-        await octokit.repos.createOrUpdateFileContents({
-            owner: config.username,
-            repo: config.repo,
-            path: fileName,
-            message: commitMessage,
-            content: contentBase64,
-            ...(data && { sha: (data).sha })
-        });
-    } catch (error) {
-        throw new Error(`Failed to push logs: ${(error).message}`);
-    }
+		await octokit.repos.createOrUpdateFileContents({
+			owner: config.username,
+			repo: config.repo,
+			path: fileName,
+			message: commitMessage,
+			content: contentBase64,
+			...(data && { sha: (data).sha })
+		});
+	} catch (error) {
+		throw new Error(`Failed to push logs: ${(error).message}`);
+	}
 }
 
 // This method is called when your extension is deactivated
-function deactivate() { 
+function deactivate() {
 	console.log('Deactivated Github Contributions Recorder');
 }
 
