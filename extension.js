@@ -1,13 +1,5 @@
 const simpleGit = require('simple-git');
-let Octokit;
-
-(async () => {
-  const { Octokit: octokit } = await import('@octokit/rest');
-  Octokit = octokit;
-  // Now you can use the Octokit class here
-  console.log('Octokit imported successfully!');
-})();
-
+const path = require('path');
 const vscode = require('vscode');
 
 const config = {
@@ -15,7 +7,7 @@ const config = {
 	repo: 'contributions-recorder-logs',
 	logFilePrefix: 'contributions-log'
 };
-
+const activeEditor = vscode.window.activeTextEditor;
 let git = null;
 let octokit = null;
 let outputChannel = null;
@@ -31,33 +23,47 @@ function activate(context) {
 	outputChannel.show();
 	outputChannel.appendLine('Github Contributions Recorder initialized!');
 
+
 	try {
-		const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-		console.log(workspacePath);
-		if (!workspacePath) {
+		let currentFolder = path.dirname(activeEditor.document.uri.fsPath);
+		console.log(currentFolder);
+		if (!currentFolder) {
 			throw new Error('No workspace folder found. Please open a folder with a Git repository.');
 		}
 
-		git = simpleGit(workspacePath);
+		git = simpleGit(currentFolder);
 		const isRepo = git.checkIsRepo();
 		if (!isRepo) {
 			throw new Error('No Git repository found. Please open a folder with a Git repository.');
 		}
-		console.log(`Git repository found at: ${workspacePath}`);
+		console.log(`Git repository found at: ${currentFolder}`);
 
 		// Check if the user is authenticated with GitHub and get the token
-		let authToken = checkAuth(context).then((token) => {
-			return token;
+		checkAuth(context).then((token) => {
+			// Verify the authentication with GitHub
+			verifyAuthentication(token).then(() => {
+				console.log('GitHub authentication verified!');
+				// Ensure the GitHub repository exists
+				getOrCreateRepo().then(() => {
+					console.log('Setting up automatic commit logging...');
+					const interval = setInterval(async () => {
+						try {
+							await logCommits(currentFolder);
+						} catch (error) {
+							console.error(error);
+						}
+					}, 1000); // 1 second interval
+					context.subscriptions.push({ dispose: () => clearInterval(interval) });
+				}).catch((error) => {
+					console.error(error);
+				});
+			}
+			).catch((error) => {
+				console.error(error);
+			});
 		}).catch((error) => {
 			console.error(error);
 		});
-		// Verify the authentication with GitHub
-		verifyAuthentication(authToken).then(() => {
-			console.log('GitHub authentication verified!');
-		}).catch((error) => {
-			console.error(error);
-		});
-
 
 
 	} catch (error) {
@@ -83,30 +89,124 @@ async function checkAuth(context) {
 async function verifyAuthentication(token) {
 	// Initialize Octokit
 	console.log('Initializing GitHub API client...');
-	octokit = new Octokit({ auth: token });
+	if (!octokit) {
+		const { Octokit } = await import('@octokit/rest');
+		octokit = new Octokit({ auth: token }); // Instantiate Octokit
+	}
 
 	// Verify the authentication
 	console.log('Verifying GitHub authentication...');
-	try{
+	try {
 		const { data } = await octokit.rest.users.getAuthenticated();
 		config.username = data.login;
 		console.log('GitHub authentication verified!');
 		outputChannel.appendLine('GitHub authentication verified!');
 		console.log(data);
-	}catch(error){
+	} catch (error) {
 		console.error(error);
 	}
 }
 
 async function authenticateWithGitHub() {
-	const token = await vscode.window.showInputBox({
-		prompt: 'Please enter your GitHub token',
-		password: true,
-	});
-	if (!token) {
-		throw new Error('No token provided. Please provide a valid GitHub token.');
+	console.log('Prompting user for GitHub token...');
+	try {
+		const token = await vscode.window.showInputBox({
+			prompt: 'Enter your GitHub token',
+			password: true,
+			ignoreFocusOut: true,
+		});
+		if (token) {
+			vscode.window.showInformationMessage(`You entered: ${token}`);
+		} else {
+			vscode.window.showWarningMessage('Input canceled or empty.');
+		}
+		return token;
+	} catch (error) {
+		vscode.window.showErrorMessage(`Error: ${error.message}`);
+		return null;
 	}
-	return token;
+}
+
+async function getOrCreateRepo() {
+	console.log('Checking for logs repository...');
+	try {
+		await octokit.repos.get({
+			owner: config.username,
+			repo: config.repoName
+		});
+	} catch (error) {
+		if (error.status === 404) {
+			await octokit.repos.createForAuthenticatedUser({
+				name: config.repo,
+				private: true,
+				auto_init: true
+			});
+			vscode.window.showInformationMessage(`Repository ${config.repo} created.`);
+		} else {
+			throw error;
+		}
+	}
+}
+
+async function logCommits(currentFolder){
+    try {
+        // Get the current date for the file name
+        const now = new Date();
+        const fileName = `${config.logFilePrefix}-${now.toISOString().split('T')[0]}.txt`;
+        const logPath = path.join(workspacePath, fileName);
+
+        // Try to get the last push date from the repository
+        let lastPushDate = null;
+        if (octokit) {
+            try {
+                const { data } = await octokit.repos.listCommits({
+                    owner: config.username,
+                    repo: config.repoName,
+                    per_page: 1
+                });
+                
+                if (data.length > 0) {
+                    lastPushDate = new Date(data[0].commit.committer?.date || data[0].commit.author?.date || '');
+                }
+            } catch (error) {
+                // If repo is empty or other error, default to null
+                lastPushDate = null;
+            }
+        }
+
+        // Get commits since last push
+        const logOptions = {
+            "--since": lastPushDate ? lastPushDate.toISOString() : '1 day'
+        };
+        
+        const log = await git.log(logOptions);
+
+        // If no new commits, show message and return
+        if (log.all.length === 0) {
+            vscode.window.showInformationMessage('No new commits since last push.');
+            return;
+        }
+
+        // Format commit data
+        const logData = log.all
+            .map(commit => `${commit.date} - ${commit.message} (${commit.author_name})`)
+            .join('\n');
+
+        // Add timestamp to the log
+        const timestampedLogData = `[Log generated at ${now.toISOString()}]\n${logData}\n`;
+
+        // Write to local file
+        fs.writeFileSync(logPath, timestampedLogData);
+
+        // Get the latest commit message for the push
+        const latestCommitMessage = log.latest?.message || 'Update commit logs';
+
+        // Push to GitHub
+        await pushLogsToRepo(fileName, timestampedLogData, latestCommitMessage);
+        vscode.window.showInformationMessage(`${log.all.length} new commits logged and pushed.`);
+    } catch (error) {
+        vscode.window.showErrorMessage(`Error logging commits: ${(error as Error).message}`);
+    }
 }
 
 // This method is called when your extension is deactivated

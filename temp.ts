@@ -99,17 +99,7 @@ export async function activate(context: vscode.ExtensionContext) {
         await ensureGitHubRepo();
         log(`Repository ${config.repoName} is ready`);
 
-        // Register commands
-        const recordNowCommand = vscode.commands.registerCommand('contributions-recorder.recordNow', async () => {
-            try {
-                await logCommits(workspacePath);
-                vscode.window.showInformationMessage('Manually triggered commit recording completed.');
-            } catch (error) {
-                handleError('Manual recording failed', error);
-            }
-        });
-        context.subscriptions.push(recordNowCommand);
-
+        
         // Set up automatic logging
         log('Setting up automatic commit logging...');
         const interval = setInterval(async () => {
