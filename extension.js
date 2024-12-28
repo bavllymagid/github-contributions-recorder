@@ -199,7 +199,7 @@ async function logCommits(currentFolder){
         const timestampedLogData = `[Log generated at ${now.toISOString()}]\n${logData}\n`;
 
         // Write to local file
-        fs.writeFileSync(logPath, timestampedLogData);
+        fs.appendFileSync(logPath, timestampedLogData);
 
         // Get the latest commit message for the push
         const latestCommitMessage = log.latest?.message || 'Update commit logs';
