@@ -53,7 +53,7 @@ function activate(context) {
 						} catch (error) {
 							console.error(error);
 						}
-					}, 1000*60); // 1 second interval
+					}, 1000 * 60); // 1 second interval
 					context.subscriptions.push({ dispose: () => clearInterval(interval) });
 				}).catch((error) => {
 					console.error(error);
@@ -153,38 +153,38 @@ async function getOrCreateRepo() {
 
 // Function to get the repository name
 async function getRepoName() {
-    try {
-        // Use git to get the current directory's repository name
-        const repoName = await git.revparse(['--show-toplevel']);
-        
-        // The --show-toplevel command returns the root of the repository, so extract the repo name from the folder path
-        const repoNameFromPath = path.basename(repoName);
+	try {
+		// Use git to get the current directory's repository name
+		const repoName = await git.revparse(['--show-toplevel']);
 
-        return repoNameFromPath;
-    } catch (error) {
-        console.error('Error getting repo name:', error);
-        return 'Unknown Repository';
-    }
+		// The --show-toplevel command returns the root of the repository, so extract the repo name from the folder path
+		const repoNameFromPath = path.basename(repoName);
+
+		return repoNameFromPath;
+	} catch (error) {
+		console.error('Error getting repo name:', error);
+		return 'Unknown Repository';
+	}
 }
 
 // Function to get the current branch name
 async function getCurrentBranch() {
-    try {
-        const branch = await git.revparse(['--abbrev-ref', 'HEAD']);
-        return branch;
-    } catch (error) {
-        console.error('Error getting current branch:', error);
-        return 'Unknown Branch';
-    }
+	try {
+		const branch = await git.revparse(['--abbrev-ref', 'HEAD']);
+		return branch;
+	} catch (error) {
+		console.error('Error getting current branch:', error);
+		return 'Unknown Branch';
+	}
 }
 
 async function logCommits(currentFolder) {
 	try {
-		
+
 		// Get the repository name
-        const repoName = await getRepoName();
-        // Get the current branch
-        const currentBranch = await getCurrentBranch();
+		const repoName = await getRepoName();
+		// Get the current branch
+		const currentBranch = await getCurrentBranch();
 
 		// Get the current date for the file name
 		config.logFilePrefix = `${repoName}-${currentBranch}-log`;
@@ -224,24 +224,25 @@ async function logCommits(currentFolder) {
 				return;
 			}
 
-			// Format commit data
-			const logData = log.all
-				.map(commit => `${commit.date} - ${commit.message} (${commit.author_name})`)
-				.join('\n');
+			for (let commit of log.all) {
+				console.log(commit);
+				const logData = `${commit.date} - ${commit.message} (${commit.author_name})`;
 
-			// Add timestamp to the log
-			const timestamp = now.toISOString();
-			const timestampedLogData = `[Log generated at ${timestamp}]\n${logData}\n`;
+				// Add timestamp to the log
+				const timestamp = now.toISOString();
+				const timestampedLogData = `[Log generated at ${timestamp}]\n${logData}\n`;
 
 
-			// Write to local file
-			fs.writeFileSync(logPath, timestampedLogData);
+				// Write to local file
+				fs.writeFileSync(logPath, timestampedLogData);
 
-			// Get the latest commit message for the push
-			const latestCommitMessage = log.latest?.message || 'Update commit logs';
+				// Get the latest commit message for the push
+				const latestCommitMessage = commit.message || 'Update commit logs';
 
-			// Push to GitHub
-			await pushLogsToRepo(fileName, timestampedLogData, latestCommitMessage);
+				// Push to GitHub
+				await pushLogsToRepo(fileName, timestampedLogData, latestCommitMessage);
+			}
+
 			vscode.window.showInformationMessage(`${log.all.length} new commits logged and pushed.`);
 		}).catch((error) => {
 			throw new Error(`Error logging commits: ${(error).message}`);
