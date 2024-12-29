@@ -223,6 +223,7 @@ async function logCommits(currentFolder) {
 				vscode.window.showInformationMessage('No new commits since last push.');
 				return;
 			}
+				
 
 			for (let commit of log.all) {
 				console.log(commit);
